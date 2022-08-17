@@ -17,6 +17,7 @@ import (
 	apierr "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
@@ -690,7 +691,7 @@ func (sc *syncContext) getSyncTasks() (_ syncTasks, successful bool) {
 
 	// check permissions
 	for _, task := range tasks {
-		serverRes, err := kube.ServerResourceForGroupVersionKind(sc.disco, task.groupVersionKind())
+		serverRes, err := getResourcesWithRetry(sc.disco, task.groupVersionKind(), 2)
 		if err != nil {
 			// Special case for custom resources: if CRD is not yet known by the K8s API server,
 			// and the CRD is part of this sync or the resource is annotated with SkipDryRunOnMissingResource=true,
@@ -749,6 +750,17 @@ func (sc *syncContext) getSyncTasks() (_ syncTasks, successful bool) {
 	}
 
 	return tasks, successful
+}
+
+func getResourcesWithRetry(disco discovery.DiscoveryInterface, gvk schema.GroupVersionKind, retryCount int) (*metav1.APIResource, error) {
+	serverRes, err := kube.ServerResourceForGroupVersionKind(disco, gvk)
+	if err != nil {
+		if apierr.IsUnauthorized(err) && retryCount > 0 {
+			retryCount--
+			return getResourcesWithRetry(disco, gvk, retryCount)
+		}
+	}
+	return serverRes, err
 }
 
 func (sc *syncContext) autoCreateNamespace(tasks syncTasks) syncTasks {
