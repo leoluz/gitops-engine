@@ -325,11 +325,11 @@ func (k *KubectlCmd) GetServerVersion(config *rest.Config) (string, error) {
 	defer span.Finish()
 	client, err := discovery.NewDiscoveryClientForConfig(config)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error creating DiscoveryClientForConfig: %s", err)
 	}
 	v, err := client.ServerVersion()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error sending request to ServerVersion: %s", err)
 	}
 	return fmt.Sprintf("%s.%s", v.Major, v.Minor), nil
 }
